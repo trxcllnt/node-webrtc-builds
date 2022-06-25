@@ -1,0 +1,100 @@
+name: Build npm package
+
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        type: string
+        required: true
+        default: 'trxcllnt/node-webrtc'
+        description: 'node-webrtc repo to use'
+      branch-or-tag:
+        type: string
+        required: true
+        default: 'node-webrtc-nvenc'
+        description: 'Branch or tag to checkout'
+      make-release:
+        type: boolean
+        required: false
+        default: false
+        description: 'Make GitHub release'
+      draft-release:
+        type: boolean
+        required: false
+        default: false
+        description: 'Mark release as draft'
+
+jobs:
+  build:
+    name: Build npm packages
+    runs-on: ubuntu-20.04
+    strategy:
+      fail-fast: true
+      matrix:
+        node: ["18.2.0"]
+        cuda: ["11.6.2"]
+        linux: ["ubuntu20.04"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          lfs: true
+          fetch-depth: 0
+
+      - name: Checkout LFS
+        run: git lfs checkout
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+        with:
+          buildkitd-flags: --debug
+
+      - name: Build npm packages
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          pull: true
+          push: false
+          file: ci/build.Dockerfile
+          outputs: type=local,dest=packages
+          # todo: Jetson AGX and linux/arm64
+          platforms: linux/amd64
+          build-args: |
+            "SCCACHE_REGION=us-west-2"
+            "SCCACHE_IDLE_TIMEOUT=32768"
+            "SCCACHE_BUCKET=node-rapids-sccache"
+            "NODE_VERSION=${{ matrix.node }}"
+            "NODE_WEBRTC_REPO=${{ inputs.repo }}"
+            "NODE_WEBRTC_BRANCH=${{ inputs.branch-or-tag }}"
+            "AMD64_BASE=nvidia/cuda:${{ matrix.cuda }}-devel-${{ matrix.linux }}"
+            "ARM64_BASE=nvidia/cuda:${{ matrix.cuda }}-devel-${{ matrix.linux }}"
+          secrets: |
+            "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}"
+            "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+
+      - name: Upload npm packages
+        uses: actions/upload-artifact@v2
+        if: ${{ inputs.make-release != true }}
+        with:
+          name: packages
+          path: packages/*.tgz
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v1
+        if: ${{ inputs.make-release == true }}
+        with:
+          body: ""
+          tag_name: "v0.4.7"
+          draft: ${{ inputs.draft-release }}
+          repository: ${{ github.repository }}
+          files: packages/*.tgz
+
+      - name: Clean up
+        run: |
+          rm packages/*.tgz
