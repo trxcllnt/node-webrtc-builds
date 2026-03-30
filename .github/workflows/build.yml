@@ -80,14 +80,14 @@ jobs:
             "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}"
 
       - name: Upload npm packages
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v6
         if: ${{ inputs.make-release != true }}
         with:
           name: packages
           path: packages/*.tgz
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         if: ${{ inputs.make-release == true }}
         with:
           body: ""
