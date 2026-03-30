@@ -127,7 +127,7 @@ registry=https://registry.npmjs.org/\n\
  && ln -s /usr/local/bin/node /usr/local/bin/nodejs \
  && ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
  && ln -s /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
- && /usr/local/bin/npm install --global --unsafe-perm --no-audit --no-fund npm \
+ && `# /usr/local/bin/npm install --global --unsafe-perm --no-audit --no-fund npm` \
  # Smoke tests
  && node --version && npm --version && yarn --version \
  \
