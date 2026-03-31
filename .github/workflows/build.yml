@@ -36,7 +36,7 @@ jobs:
       matrix:
         arch: ["amd64", "arm64"]
         node: ["18.2.0"]
-        cuda: ["11.6.2"]
+        cuda: ["12.9.1"]
         linux: ["ubuntu20.04"]
     steps:
       - name: Checkout
