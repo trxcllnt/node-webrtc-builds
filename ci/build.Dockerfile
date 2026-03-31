@@ -1,14 +1,14 @@
-# syntax=docker/dockerfile:1.3
+# syntax=docker/dockerfile:1
 
 ARG AMD64_BASE
 ARG ARM64_BASE
 ARG NODE_VERSION=18.2.0
 
-FROM node:$NODE_VERSION-bullseye-slim as node
+FROM node:$NODE_VERSION-bullseye-slim AS node
 
-FROM ${AMD64_BASE} as base-amd64
+FROM ${AMD64_BASE} AS base-amd64
 
-FROM ${ARM64_BASE} as base-arm64
+FROM ${ARM64_BASE} AS base-arm64
 
 ONBUILD RUN \
     if [[ -d /usr/local/cuda/lib64 ] && [ ! -f /usr/local/cuda/lib64/libcudart.so ]]; then \
@@ -19,7 +19,7 @@ ONBUILD RUN \
         rm /etc/ld.so.cache && ldconfig; \
     fi
 
-FROM base-${TARGETARCH} as compilers
+FROM base-${TARGETARCH} AS compilers
 
 SHELL ["/bin/bash", "-c"]
 
@@ -38,7 +38,6 @@ ${CUDA_HOME}/lib64/stubs"
 
 ARG GCC_VERSION=9
 ARG CMAKE_VERSION=3.23.2
-ARG SCCACHE_VERSION=0.2.15
 
 ARG NODE_VERSION=18.2.0
 ENV NODE_VERSION=$NODE_VERSION
@@ -108,7 +107,7 @@ RUN --mount=type=cache,target=/var/lib/apt \
  && sh "/tmp/cmake-$CMAKE_VERSION-linux-$(uname -m).sh" --skip-license --exclude-subdir --prefix=/usr/local \
  \
  # Install sccache
- && curl -SsL "https://github.com/mozilla/sccache/releases/download/v$SCCACHE_VERSION/sccache-v$SCCACHE_VERSION-$(uname -m)-unknown-linux-musl.tar.gz" \
+ && curl -SsL "https://github.com/rapidsai/sccache/releases/latest/download/sccache-$(uname -m)-unknown-linux-musl.tar.gz" \
     | tar -C /usr/bin -zf - --wildcards --strip-components=1 -x */sccache \
  && chmod +x /usr/bin/sccache \
  \
@@ -141,20 +140,20 @@ ENTRYPOINT ["docker-entrypoint.sh"]
 
 WORKDIR /
 
-FROM compilers as wrtc-amd64
+FROM compilers AS wrtc-amd64
 
 ONBUILD COPY --chown=root:root ci/libs/x86_64/*.so /usr/local/cuda/lib64/stubs/
 
-FROM compilers as wrtc-arm64
+FROM compilers AS wrtc-arm64
 
 ONBUILD COPY --chown=root:root ci/libs/aarch64/*.so /usr/local/cuda/lib64/stubs/
 
-FROM wrtc-${TARGETARCH} as wrtc
+FROM wrtc-${TARGETARCH} AS wrtc
 
 ARG TARGETARCH
 ARG SCCACHE_REGION
 ARG SCCACHE_BUCKET
-ARG SCCACHE_IDLE_TIMEOUT
+ARG SCCACHE_IDLE_TIMEOUT=0
 
 ARG NODE_WEBRTC_REPO
 ARG NODE_WEBRTC_BRANCH
@@ -163,34 +162,34 @@ RUN --mount=type=secret,id=AWS_ACCESS_KEY_ID \
     --mount=type=secret,id=AWS_SECRET_ACCESS_KEY \
     \
     apt update \
-     && DEBIAN_FRONTEND=noninteractive \
-     apt install -y --no-install-recommends python \
-     && apt autoremove -y && apt clean \
-     && rm -rf \
-        /tmp/* \
-        /var/tmp/* \
-        /var/lib/apt/lists/* \
-        /var/cache/apt/archives/* \
-     && git clone \
-        --depth 1 --branch "$NODE_WEBRTC_BRANCH" \
-        "https://github.com/$NODE_WEBRTC_REPO.git" /tmp/node-webrtc \
-     && cd /tmp/node-webrtc \
-     && SKIP_DOWNLOAD=1 \
-        TARGET_ARCH=${TARGETARCH} \
-        CMAKE_MESSAGE_LOG_LEVEL=VERBOSE \
-        CMAKE_C_COMPILER_LAUNCHER=/usr/bin/sccache \
-        CMAKE_CXX_COMPILER_LAUNCHER=/usr/bin/sccache \
-        CMAKE_CUDA_COMPILER_LAUNCHER=/usr/bin/sccache \
-        AWS_ACCESS_KEY_ID="$(cat /run/secrets/AWS_ACCESS_KEY_ID)" \
-        AWS_SECRET_ACCESS_KEY="$(cat /run/secrets/AWS_SECRET_ACCESS_KEY)" \
-        npm install --no-audit --no-fund \
-     && cd / \
-     \
-     && mkdir -p /opt/node-webrtc/build \
-     && cp -R /tmp/node-webrtc/lib /opt/node-webrtc/ \
-     && cp -R /tmp/node-webrtc/build/Release /opt/node-webrtc/build/ \
-     && cp -R /tmp/node-webrtc/{README,LICENSE,THIRD_PARTY_LICENSES}.md /opt/node-webrtc/ \
-     && bash -c 'echo -e "{\n\
+ && DEBIAN_FRONTEND=noninteractive \
+    apt install -y --no-install-recommends python \
+ && apt autoremove -y && apt clean \
+ && rm -rf \
+    /tmp/* \
+    /var/tmp/* \
+    /var/lib/apt/lists/* \
+    /var/cache/apt/archives/* \
+ && git clone \
+    --depth 1 --branch "$NODE_WEBRTC_BRANCH" \
+    "https://github.com/$NODE_WEBRTC_REPO.git" /tmp/node-webrtc \
+ && cd /tmp/node-webrtc \
+ && SKIP_DOWNLOAD=1 \
+    TARGET_ARCH=${TARGETARCH} \
+    CMAKE_MESSAGE_LOG_LEVEL=VERBOSE \
+    CMAKE_C_COMPILER_LAUNCHER=/usr/bin/sccache \
+    CMAKE_CXX_COMPILER_LAUNCHER=/usr/bin/sccache \
+    CMAKE_CUDA_COMPILER_LAUNCHER=/usr/bin/sccache \
+    AWS_ACCESS_KEY_ID="$(cat /run/secrets/AWS_ACCESS_KEY_ID)" \
+    AWS_SECRET_ACCESS_KEY="$(cat /run/secrets/AWS_SECRET_ACCESS_KEY)" \
+    npm install --no-audit --no-fund \
+ && cd / \
+ \
+ && mkdir -p /opt/node-webrtc/build \
+ && cp -R /tmp/node-webrtc/lib /opt/node-webrtc/ \
+ && cp -R /tmp/node-webrtc/build/Release /opt/node-webrtc/build/ \
+ && cp -R /tmp/node-webrtc/{README,LICENSE,THIRD_PARTY_LICENSES}.md /opt/node-webrtc/ \
+ && bash -c 'echo -e "{\n\
 \"name\": \"wrtc\",\n\
 \"version\": \"0.4.7-linux-${TARGETARCH}\",\n\
 \"author\": \"Alan K <ack@modeswitch.org> (http://blog.modeswitch.org)\",\n\
@@ -216,6 +215,6 @@ RUN --mount=type=secret,id=AWS_ACCESS_KEY_ID \
     mkdir -p /out; \
     npm pack --pack-destination /out /opt/node-webrtc;
 
-FROM scratch as export-stage
+FROM scratch AS export-stage
 
 COPY --from=wrtc /out/ /
